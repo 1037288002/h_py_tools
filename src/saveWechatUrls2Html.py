@@ -116,13 +116,21 @@ def init():
         os.mkdir(__out_dir_name)
 
 
-def main():
-    init()
+def match_urls():
     if sys.argv is not None and len(sys.argv) > 1 \
             and sys.argv[1] is not None and sys.argv[1].strip():
-        urls = get_urls_from_file(sys.argv[1])
+        if re.match(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', sys.argv[1]):
+            urls = [sys.argv[1]]
+        else:
+            urls = get_urls_from_file(sys.argv[1])
     else:
         urls = get_urls_from_file(_urls_file_path)
+    return urls
+
+
+def main():
+    init()
+    urls = match_urls()
     if len(urls) == 0:
         print("没有链接！！！")
         return
