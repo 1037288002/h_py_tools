@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 _urls_file_path = "urls.txt"
 __out_dir_name = "offline_pages"
-__img_save_dir_suffix = "_files"
+__src_save_dir_suffix = "_files"
 __bad_urls = []
 
 
@@ -25,37 +25,30 @@ def get_urls_from_file(file_path):
     return urls
 
 
-def save_img(title, name, img_url):
-    img_save_dir_name = title + __img_save_dir_suffix
-    img_save_dir = __out_dir_name + os.path.sep + img_save_dir_name
-    if not os.path.exists(img_save_dir):
-        os.mkdir(img_save_dir)
-    elif os.path.isfile(img_save_dir):
-        os.mkdir(img_save_dir)
+def save_src(title, name, src_url):
+    src_save_dir_name = title + __src_save_dir_suffix
+    src_save_dir = __out_dir_name + os.path.sep + src_save_dir_name
+    if not os.path.exists(src_save_dir):
+        os.mkdir(src_save_dir)
+    elif os.path.isfile(src_save_dir):
+        os.mkdir(src_save_dir)
 
-    img_src = img_save_dir_name + os.path.sep + name
-    img_file_path = __out_dir_name + os.path.sep + img_src
-    # print("下载图片： ", img_url)
-    urllib.request.urlretrieve(img_url, img_file_path)
-    return img_src
+    src = src_save_dir_name + os.path.sep + name
+    src_file_path = __out_dir_name + os.path.sep + src
+    # print("下载资源： ", src_url)
+    urllib.request.urlretrieve(src_url, src_file_path)
+    return src
 
 
 def get_title_from_soup(soup):
-    title_el = soup.find('title')
-    if title_el is None:
-        title_el = soup.find('h2')
-    if title_el is None:
-        title_el = soup.find('h4')
-    if title_el is None:
-        title_el = soup.find('h3')
-    if title_el is None:
-        title_el = soup.find('h1')
-    if title_el is None:
-        title_el = soup.find('h5')
-    if title_el is None:
-        title_el = soup.find('h6')
-    if title_el is None:
-        title_el = soup.find('h7')
+    title_el = soup.find('title') \
+               or soup.find('h2') \
+               or soup.find('h4') \
+               or soup.find('h3') \
+               or soup.find('h1') \
+               or soup.find('h5') \
+               or soup.find('h6') \
+               or soup.find('h7')
     if title_el is None:
         raise EOFError
     title = title_el.get_text()
@@ -65,7 +58,53 @@ def get_title_from_soup(soup):
     return title
 
 
+
 def draw_from_url(url):
+
+
+    img_lable_pattern = "(<img .*?src=\")(.*?)(\")"
+    js_lable_pattern = "(<script .*?src=\")(.*?)(\")"
+    css_lable_pattern = "(<link .*?href=\")(.*?)(\")"
+
+    def re_change_img_url(m):
+        return re_change_src_url(m, img_lable_pattern)
+
+    def re_change_js_url(m):
+        return re_change_src_url(m, js_lable_pattern)
+
+    def re_change_css_url(m):
+        return re_change_src_url(m, css_lable_pattern)
+
+    # 资源下载到本地， 同时替换成本地路径
+    def re_change_src_url(m, pattern):
+        if len(m.group(2)) == 0:
+            return m.group(1) + m.group(2) + m.group(3)
+        proto, rest = urllib.request.splittype(url)
+        res, rest = urllib.request.splithost(rest)
+        if not m.group(2).startswith("http") and not m.group(2).startswith("https"):
+            if m.group(2).startswith("//"):
+                url_head = url.split(":")[0]
+                src_url = url_head + ":" + m.group(2)
+            else:
+                src_url = proto + "://" + res + m.group(2)
+        else:
+            src_url = m.group(2)
+        src_name = re.sub('[\/:*?"<>|]', '-', src_url)
+        src = save_src(title, src_name, src_url)
+
+        if pattern == img_lable_pattern:
+            src_el = '<img src="' + src + '" >'
+        elif pattern == js_lable_pattern:
+            src_el = '<script src="' + src + '" >'
+        elif pattern == css_lable_pattern:
+            src_el = '<link href="' + src + '" >'
+        else:
+            print("unkonwn error")
+            return None
+
+        src_el = src_el.split(">")[0]
+        return src_el
+
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
     title = ""
@@ -77,29 +116,16 @@ def draw_from_url(url):
         return
     body = soup
     html = str(body)
-    # body中的img标签的src相对路径的改成绝对路径
-    pattern = "(<img .*?src=\")(.*?)(\")"
-    url_head = url.split(":")[0]
-
-    # 图片下载到本地， 同时替换成本地路径
-    def func(m):
-        if len(m.group(2)) == 0:
-            return m.group(1) + m.group(2) + m.group(3)
-        proto, rest = urllib.request.splittype(url)
-        res, rest = urllib.request.splithost(rest)
-        if not m.group(2).startswith("http") and not m.group(2).startswith("https"):
-            if m.group(2).startswith("//"):
-                img_url = url_head + ":" + m.group(2)
-            else:
-                img_url = proto + "://" + res + m.group(2)
-        else:
-            img_url = m.group(2)
-        img_name = re.sub('[\/:*?"<>|]', '-', img_url)
-        img_el = '<img src="' + save_img(title, img_name, img_url) + '" >'
-        img_el = img_el.split(">")[0]
-        return img_el
-
-    html = re.compile(pattern).sub(func, html)
+    # body中的资源标签的src相对路径的改成绝对路径
+    html = re.compile(img_lable_pattern).sub(re_change_img_url, html)
+    # try:
+    #     html = re.compile(js_lable_pattern).sub(re_change_js_url, html)
+    # except:
+    #     print("handle js failed")
+    # try:
+    #     html = re.compile(css_lable_pattern).sub(re_change_css_url, html)
+    # except:
+    #     print("handle css failed")
     path = __out_dir_name + os.path.sep + title + ".html"
     if os.path.exists(path):
         os.remove(path)
