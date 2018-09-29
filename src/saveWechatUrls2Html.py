@@ -41,7 +41,9 @@ def save_img(title, name, img_url):
 
 
 def get_title_from_soup(soup):
-    title_el = soup.find('h2')
+    title_el = soup.find('title')
+    if title_el is None:
+        title_el = soup.find('h2')
     if title_el is None:
         title_el = soup.find('h4')
     if title_el is None:
